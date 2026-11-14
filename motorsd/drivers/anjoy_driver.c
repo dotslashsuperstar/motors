@@ -30,6 +30,8 @@ struct configuration {
     unsigned pan_speed;
     unsigned tilt_speed;
     unsigned keepalive_ms;
+    bool invert_pan;
+    bool invert_tilt;
 };
 
 struct driver_state {
@@ -129,6 +131,14 @@ static int load_configuration(const char *path, struct configuration *config) {
             if (parse_uint(value, 1, 63, &config->tilt_speed)) goto invalid;
         } else if (!strcmp(key, "keepalive_ms")) {
             if (parse_uint(value, 50, 5000, &config->keepalive_ms)) goto invalid;
+        } else if (!strcmp(key, "invert_pan")) {
+            unsigned v = 0;
+            if (parse_uint(value, 0, 1, &v)) goto invalid;
+            config->invert_pan = (v != 0);
+        } else if (!strcmp(key, "invert_tilt")) {
+            unsigned v = 0;
+            if (parse_uint(value, 0, 1, &v)) goto invalid;
+            config->invert_tilt = (v != 0);
         }
     }
     fclose(file);
@@ -361,14 +371,20 @@ static int send_move(struct driver_state *state, unsigned axis, const char *dir,
     else if (axis == MOTORS_AXIS_FOCUS)
         state->zoom_was_active = false;
     switch ((enum motors_axis)axis) {
-    case MOTORS_AXIS_PAN:
+    case MOTORS_AXIS_PAN: {
+        bool left = !strcmp(dir, "left");
+        if (state->config.invert_pan) left = !left;
         d1 = (uint8_t)(speed ? speed : state->config.pan_speed);
-        c2 = !strcmp(dir, "left") ? 0x04 : 0x02;
+        c2 = left ? 0x04 : 0x02;
         break;
-    case MOTORS_AXIS_TILT:
+    }
+    case MOTORS_AXIS_TILT: {
+        bool up = !strcmp(dir, "up");
+        if (state->config.invert_tilt) up = !up;
         d2 = (uint8_t)(speed ? speed : state->config.tilt_speed);
-        c2 = !strcmp(dir, "up") ? 0x08 : 0x10;
+        c2 = up ? 0x08 : 0x10;
         break;
+    }
     case MOTORS_AXIS_ZOOM:
         d1 = d2 = 0x14;
         c2 = !strcmp(dir, "tele") ? 0x20 : 0x40;
